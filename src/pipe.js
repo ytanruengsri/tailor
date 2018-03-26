@@ -1,4 +1,4 @@
-(function(doc, perf) { //eslint-disable-line no-unused-vars, strict, prettier/prettier
+(function(doc, perf, IntersectionObserver, IntersectionObserverEntry) { //eslint-disable-line no-unused-vars, strict, prettier/prettier
     var placeholders = {};
     var starts = {};
     var scripts = doc.getElementsByTagName('script');
@@ -95,6 +95,7 @@
         }
         start.parentNode.removeChild(start);
         end.parentNode.removeChild(end);
+
         script &&
             require([script], function(i) {
                 // Exported AMD fragment initialization Function/Promise
@@ -111,6 +112,61 @@
                 doInit(init, node, attributes, index);
             });
     }
+
+    /**
+     * Observe the visibility of node in viewport
+     * @param {String} nodeId id of a container
+     */
+    function observeNodeVisibility(nodeId, script) {
+        var target = doc.getElementById(nodeId);
+        var node = target.childNodes[0];
+        if (target) {
+            if (
+                IntersectionObserver &&
+                IntersectionObserverEntry &&
+                'intersectionRatio' in IntersectionObserverEntry.prototype
+            ) {
+                var options = {
+                    root: null, // browser viewport
+                    threshold: [0, 0.25, 0.5, 0.75, 1] // callback run every time visibility passes another 25%
+                };
+                var callback = function(entries, observer) {
+                    entries.forEach(function(entry) {
+                        if (entry.intersectionRatio > 0) {
+                            // load javascript asynchronously
+                            loadJS(script, node);
+                            // Unobserve target
+                            observer.unobserve(entry.target);
+                        }
+                    });
+                };
+                var observer = new IntersectionObserver(callback, options);
+                observer.observe(target);
+            } else {
+                // load javascript right away
+                loadJS(script, node);
+            }
+        }
+    }
+
+    /**
+     * Load a js file asynchronously
+     * @param {String} script
+     */
+    function loadJS(script, node) {
+        script &&
+            require([script], function(i) {
+                // Exported AMD fragment initialization Function/Promise
+                var init = i && i.__esModule ? i.default : i;
+                // early return
+                if (typeof init !== 'function') {
+                    return;
+                }
+                // Initialize the fragment on the DOM node
+                init(node);
+            });
+    }
+
     /* @preserve - loadCSS: load a CSS file asynchronously. [c]2016 @scottjehl, Filament Group, Inc. Licensed MIT */
     function loadCSS(href) {
         var ss = doc.createElement('link');
@@ -205,6 +261,8 @@
         placeholder: placeholder,
         start: start,
         end: end,
+        observeNodeVisibility: observeNodeVisibility,
+        loadJS: loadJS,
         loadCSS: loadCSS,
         onStart: assignHook('onStart'),
         onBeforeInit: assignHook('onBeforeInit'),
@@ -214,4 +272,9 @@
         addTTFMPEntry: addTTFMPEntry,
         getEntries: getEntries
     };
-})(window.document, window.performance);
+})(
+    window.document,
+    window.performance,
+    window.IntersectionObserver,
+    window.IntersectionObserverEntry
+);
